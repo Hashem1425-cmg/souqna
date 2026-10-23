@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#123c32">
+  <title>باب اليمن | سوقك الإلكتروني</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: Tahoma, Arial, sans-serif;
+      background: #f6f7f4;
+      color: #202b26;
+    }
+    header {
+      background: #123c32;
+      color: white;
+      padding: 22px 16px;
+      text-align: center;
+    }
+    header h1 { margin: 0 0 8px; font-size: 30px; }
+    header p { margin: 0; color: #d8e9df; }
+    .search {
+      display: block;
+      width: 100%;
+      padding: 13px;
+      border: 1px solid #ddd;
+      border-radius: 10px;
+      font-size: 16px;
+      margin: 18px 0;
+    }
+    main { max-width: 900px; margin: auto; padding: 16px; }
+    .hero {
+      background: #e4eee7;
+      padding: 24px 18px;
+      border-radius: 16px;
+      text-align: center;
+    }
+    .hero h2 { color: #123c32; margin-top: 0; }
+    .button {
+      display: inline-block;
+      border: 0;
+      border-radius: 9px;
+      padding: 12px 18px;
+      background: #c58b36;
+      color: white;
+      font-size: 16px;
+      cursor: pointer;
+      text-decoration: none;
+    }
+    h2.section-title { margin-top: 28px; }
+    .products {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 12px;
+    }
+    .product {
+      background: white;
+      border: 1px solid #e8eae5;
+      border-radius: 12px;
+      padding: 16px 10px;
+      text-align: center;
+    }
+    .product .emoji { font-size: 38px; }
+    .product h3 { font-size: 16px; }
+    .product p { color: #53635a; font-size: 14px; }
+    footer {
+      margin-top: 32px;
+      padding: 22px;
+      background: #123c32;
+      color: white;
+      text-align: center;
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>باب اليمن</h1>
+    <p>وجهتك للتسوق في اليمن</p>
+  </header>
+
+  <main>
+    <input id="search" class="search" type="search"
+      placeholder="ابحث عن منتج..." aria-label="البحث عن المنتجات">
+
+    <section class="hero">
+      <h2>مرحبًا بك في باب اليمن</h2>
+      <p>اكتشف المنتجات وتسوق بسهولة من مكان واحد.</p>
+      <a class="button" href="#products">تصفح المنتجات</a>
+    </section>
+
+    <h2 class="section-title">منتجات مميزة</h2>
+    <section id="products" class="products">
+      <article class="product">
+        <div class="emoji">👕</div>
+        <h3>الملابس</h3>
+        <p>منتجات الأزياء</p>
+      </article>
+      <article class="product">
+        <div class="emoji">📱</div>
+        <h3>الإلكترونيات</h3>
+        <p>الأجهزة والإكسسوارات</p>
+      </article>
+      <article class="product">
+        <div class="emoji">🏠</div>
+        <h3>المنزل</h3>
+        <p>مستلزمات البيت</p>
+      </article>
+      <article class="product">
+        <div class="emoji">🧴</div>
+        <h3>العناية الشخصية</h3>
+        <p>منتجات العناية</p>
+      </article>
+    </section>
+    <p id="empty" hidden>لا توجد نتائج مطابقة لبحثك.</p>
+  </main>
+
+  <footer>
+    <p>باب اليمن © 2026</p>
+    <p>التسوق الإلكتروني في اليمن</p>
+  </footer>
+
+  <script>
+    const search = document.getElementById('search');
+    const products = [...document.querySelectorAll('.product')];
+    const empty = document.getElementById('empty');
+
+    search.addEventListener('input', () => {
+      const query = search.value.trim().toLowerCase();
+      let visible = 0;
+      products.forEach(product => {
+        const match = product.textContent.toLowerCase().includes(query);
+        product.hidden = !match;
+        if (match) visible++;
+      });
+      empty.hidden = visible > 0;
+    });
+  </script>
+</body>
+</html>
