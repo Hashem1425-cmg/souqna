@@ -91,30 +91,16 @@
       <a class="button" href="#products">تصفح المنتجات</a>
     </section>
 
-    <h2 class="section-title">منتجات مميزة</h2>
-    <section id="products" class="products">
-      <article class="product">
-        <div class="emoji">👕</div>
-        <h3>الملابس</h3>
-        <p>منتجات الأزياء</p>
-      </article>
-      <article class="product">
-        <div class="emoji">📱</div>
-        <h3>الإلكترونيات</h3>
-        <p>الأجهزة والإكسسوارات</p>
-      </article>
-      <article class="product">
-        <div class="emoji">🏠</div>
-        <h3>المنزل</h3>
-        <p>مستلزمات البيت</p>
-      </article>
-      <article class="product">
-        <div class="emoji">🧴</div>
-        <h3>العناية الشخصية</h3>
-        <p>منتجات العناية</p>
-      </article>
-    </section>
-    <p id="empty" hidden>لا توجد نتائج مطابقة لبحثك.</p>
+    <h2 class="section-title"><h2 class="section-title">منتجات المتجر</h2>
+
+<section id="products" class="products">
+  <p>جارٍ تحميل المنتجات...</p>
+</section>
+
+<p id="empty" hidden>لا توجد منتجات متاحة حاليًا.</p>
+<p id="load-error" hidden>
+  تعذر تحميل المنتجات. حاول تحديث الصفحة لاحقًا.
+</p>ائج مطابقة لبحثك.</p>
   </main>
 
   <footer>
@@ -138,5 +124,89 @@
       empty.hidden = visible > 0;
     });
   </script>
+<script>
+const SUPABASE_URL = 'https://qgtygofdtrczotqrmjux.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_zp-efBIRPCHrVhtTFl0eOw_-x9ea6G9';
+
+const searchInput = document.getElementById('search');
+const productsContainer = document.getElementById('products');
+const emptyMessage = document.getElementById('empty');
+const errorMessage = document.getElementById('load-error');
+
+let allProducts = [];
+
+async function loadProducts() {
+  productsContainer.textContent = 'جارٍ تحميل المنتجات...';
+
+  try {
+    const response = await fetch(
+      `${SUPABASE_URL}/rest/v1/products?select=id,name,description,price,image_url&is_active=eq.true&order=created_at.desc`,
+      {
+        headers: {
+          apikey: SUPABASE_KEY,
+          Authorization: `Bearer ${SUPABASE_KEY}`
+        }
+      }
+    );
+
+    if (!response.ok) {
+      throw new Error('تعذر جلب المنتجات');
+    }
+
+    allProducts = await response.json();
+    renderProducts();
+  } catch (error) {
+    productsContainer.replaceChildren();
+    errorMessage.hidden = false;
+  }
+}
+
+function renderProducts() {
+  const query = searchInput.value.trim().toLowerCase();
+
+  const filtered = allProducts.filter(product =>
+    `${product.name || ''} ${product.description || ''}`
+      .toLowerCase()
+      .includes(query)
+  );
+
+  productsContainer.replaceChildren();
+  emptyMessage.hidden = filtered.length > 0;
+  errorMessage.hidden = false;
+  errorMessage.hidden = true;
+
+  filtered.forEach(product => {
+    const card = document.createElement('article');
+    card.className = 'product';
+
+    if (product.image_url) {
+      const image = document.createElement('img');
+      image.src = product.image_url;
+      image.alt = product.name || 'منتج';
+      image.loading = 'lazy';
+      image.style.cssText =
+        'width:100%;height:150px;object-fit:contain;border-radius:8px';
+      card.appendChild(image);
+    }
+
+    const title = document.createElement('h3');
+    title.textContent = product.name || 'منتج';
+    card.appendChild(title);
+
+    const description = document.createElement('p');
+    description.textContent = product.description || '';
+    card.appendChild(description);
+
+    const price = document.createElement('p');
+    price.textContent = `${product.price} ريال`;
+    card.appendChild(price);
+
+    productsContainer.appendChild(card);
+  });
+}
+
+searchInput.addEventListener('input', renderProducts);
+loadProducts();
+</script>
 </body>
 </html>
