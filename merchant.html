@@ -25,6 +25,12 @@ button:disabled{opacity:.6}
 .hidden{display:none}
 .actions{display:flex;gap:8px;flex-wrap:wrap}
 .actions button{flex:1;min-width:100px}
+#imagePreview,.gallery{display:flex;gap:8px;flex-wrap:wrap;margin:10px 0}
+.preview-item{width:100px;position:relative}
+.preview-item img,.gallery img{width:100px;height:100px;object-fit:cover;border-radius:8px;background:#eee}
+.preview-item button{padding:5px;margin:3px 0;font-size:12px}
+.gallery{display:grid;grid-template-columns:repeat(auto-fill,minmax(100px,1fr))}
+.gallery img{width:100%;height:110px}
 </style>
 </head>
 <body>
@@ -38,7 +44,7 @@ button:disabled{opacity:.6}
 
   <section id="loginPanel" class="panel hidden">
     <h2>تسجيل الدخول</h2>
-    <p class="muted">استخدم البريد الإلكتروني وكلمة مرور حسابك المسجل في المتجر.</p>
+    <p class="muted">استخدم البريد الإلكتروني وكلمة مرور حسابك المسجل.</p>
     <form id="loginForm">
       <input id="email" type="email" placeholder="البريد الإلكتروني" required autocomplete="username">
       <input id="password" type="password" placeholder="كلمة المرور" required autocomplete="current-password">
@@ -52,7 +58,7 @@ button:disabled{opacity:.6}
         <h2 style="flex:2">منتجات متجري</h2>
         <button id="logoutBtn" type="button" class="secondary" style="flex:1">تسجيل الخروج</button>
       </div>
-      <p class="muted">أضف المنتجات وعدّلها أو أخفها من واجهة المتجر.</p>
+      <p class="muted">أضف المنتجات وعدّلها أو أخفها من المتجر.</p>
     </div>
 
     <div class="panel">
@@ -61,7 +67,13 @@ button:disabled{opacity:.6}
         <input id="productName" placeholder="اسم المنتج" maxlength="150" required>
         <textarea id="description" placeholder="وصف المنتج" rows="3"></textarea>
         <input id="price" type="number" min="0.01" step="0.01" placeholder="السعر بالريال اليمني" required>
-        <input id="imageUrl" type="url" placeholder="رابط صورة المنتج (اختياري)">
+
+        <label for="imageFiles"><strong>📷 صور المنتج</strong></label>
+        <input id="imageFiles" type="file" accept="image/*" multiple>
+        <p class="muted">اختر عدة صور من معرض هاتفك. إذا اخترت صورًا جديدة عند التعديل فستحل محل الصور القديمة.</p>
+        <div id="imagePreview"></div>
+        <p id="currentImagesNote" class="muted"></p>
+
         <label><input id="isActive" type="checkbox" checked style="width:auto"> عرض المنتج في المتجر</label>
         <button id="saveBtn" type="submit">حفظ المنتج</button>
         <button id="cancelEdit" type="button" class="secondary hidden">إلغاء التعديل</button>
@@ -78,15 +90,15 @@ button:disabled{opacity:.6}
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script>
 const SUPABASE_URL = 'https://qgtygofdtrczotqrmjux.supabase.co';
-
-// استبدل النص أدناه بمفتاح Publishable الموجود في ملف index.html.
-const SUPABASE_KEY ='sb_publishable_zp-efBIRPCHrVhtTFl0eOw_-x9ea6G9';
+const SUPABASE_KEY = 'sb_publishable_zp-efBIRPCHrVhtTFl0eOw_-x9ea6G';
+const BUCKET = 'product-images';
 
 const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
-
 const $ = id => document.getElementById(id);
+
 let editingId = null;
 let busy = false;
+let selectedFiles = [];
 
 function message(text) {
   $('message').textContent = text;
@@ -107,13 +119,140 @@ function setBusy(value) {
   $('saveBtn').disabled = value;
 }
 
+function safeImageUrl(url) {
+  try {
+    const parsed = new URL(url);
+    return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : null;
+  } catch (_) {
+    return null;
+  }
+}
+
+function productImages(product) {
+  const urls = Array.isArray(product.image_urls) ? product.image_urls : [];
+  const valid = urls.map(safeImageUrl).filter(Boolean);
+  if (valid.length) return valid;
+
+  const oldUrl = safeImageUrl(product.image_url || '');
+  return oldUrl ? [oldUrl] : [];
+}
+
+function showPreview() {
+  $('imagePreview').replaceChildren();
+
+  selectedFiles.forEach((file, index) => {
+    const item = document.createElement('div');
+    item.className = 'preview-item';
+
+    const img = document.createElement('img');
+    img.alt = file.name;
+    img.src = URL.createObjectURL(file);
+
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'secondary';
+    remove.textContent = 'إزالة';
+    remove.onclick = () => {
+      selectedFiles.splice(index, 1);
+      updateFileInput();
+      showPreview();
+    };
+
+    item.append(img, remove);
+    $('imagePreview').appendChild(item);
+  });
+
+  $('currentImagesNote').textContent = selectedFiles.length
+    ? 'عدد الصور المختارة: ' + selectedFiles.length
+    : (editingId ? 'لم تختر صورًا جديدة؛ ستبقى الصور الحالية كما هي.' : 'لم يتم اختيار صور بعد.');
+}
+
+function updateFileInput() {
+  const transfer = new DataTransfer();
+  selectedFiles.forEach(file => transfer.items.add(file));
+  $('imageFiles').files = transfer.files;
+}
+
+$('imageFiles').addEventListener('change', () => {
+  const incoming = Array.from($('imageFiles').files || []);
+  const combined = [...selectedFiles, ...incoming];
+  const seen = new Set();
+
+  selectedFiles = combined.filter(file => {
+    const key = file.name + '|' + file.size + '|' + file.lastModified;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
+
+  if (selectedFiles.length > 10) {
+    selectedFiles = selectedFiles.slice(0, 10);
+    message('الحد الأقصى 10 صور للمنتج الواحد.');
+  }
+
+  const tooLarge = selectedFiles.find(file => file.size > 8 * 1024 * 1024);
+  if (tooLarge) {
+    message('حجم الصورة "' + tooLarge.name + '" أكبر من 8 ميغابايت. اختر صورًا أصغر.');
+    selectedFiles = selectedFiles.filter(file => file.size <= 8 * 1024 * 1024);
+  }
+
+  updateFileInput();
+  showPreview();
+});
+
 function resetForm() {
   editingId = null;
+  selectedFiles = [];
   $('productForm').reset();
+  $('imageFiles').value = '';
+  $('imagePreview').replaceChildren();
+  $('currentImagesNote').textContent = '';
   $('isActive').checked = true;
   $('formTitle').textContent = 'إضافة منتج جديد';
   $('saveBtn').textContent = 'حفظ المنتج';
   $('cancelEdit').classList.add('hidden');
+}
+
+async function uploadImages(files, userId, productId) {
+  const urls = [];
+
+  for (let i = 0; i < files.length; i++) {
+    const file = files[i];
+
+    if (!file.type.startsWith('image/')) {
+      throw new Error('أحد الملفات المختارة ليس صورة.');
+    }
+
+    const originalExt = file.name.includes('.')
+      ? file.name.split('.').pop().toLowerCase().replace(/[^a-z0-9]/g, '')
+      : '';
+    const ext = originalExt || 'jpg';
+    const path = userId + '/' + productId + '/' +
+      Date.now() + '-' + i + '-' +
+      Math.random().toString(36).slice(2, 9) + '.' + ext;
+
+    message('جارٍ رفع الصورة ' + (i + 1) + ' من ' + files.length + '...');
+
+    const { error } = await db.storage.from(BUCKET).upload(path, file, {
+      contentType: file.type,
+      upsert: false
+    });
+
+    if (error) {
+      throw new Error('فشل رفع الصورة ' + file.name + ': ' + error.message);
+    }
+
+    const { data } = db.storage.from(BUCKET).getPublicUrl(path);
+    const publicUrl = safeImageUrl(data && data.publicUrl);
+
+    if (!publicUrl) {
+      throw new Error('تعذر الحصول على رابط الصورة المرفوعة.');
+    }
+
+    urls.push(publicUrl);
+  }
+
+  return urls;
 }
 
 async function loadProducts() {
@@ -121,7 +260,7 @@ async function loadProducts() {
 
   const { data, error } = await db
     .from('products')
-    .select('id,name,description,price,image_url,is_active,created_at')
+    .select('id,name,description,price,image_url,image_urls,is_active,created_at')
     .order('created_at', { ascending: false });
 
   if (error) {
@@ -140,21 +279,24 @@ async function loadProducts() {
     const card = document.createElement('article');
     card.className = 'product';
 
-    if (product.image_url) {
-      try {
-        const parsed = new URL(product.image_url);
-        if (parsed.protocol === 'https:' || parsed.protocol === 'http:') {
-          const img = document.createElement('img');
-          img.src = parsed.href;
-          img.alt = product.name || 'صورة المنتج';
-          img.loading = 'lazy';
-          card.appendChild(img);
-        }
-      } catch (_) {}
+    const images = productImages(product);
+    if (images.length) {
+      const gallery = document.createElement('div');
+      gallery.className = 'gallery';
+
+      images.forEach(url => {
+        const img = document.createElement('img');
+        img.src = url;
+        img.alt = product.name || 'صورة المنتج';
+        img.loading = 'lazy';
+        gallery.appendChild(img);
+      });
+
+      card.appendChild(gallery);
     }
 
     const title = document.createElement('h3');
-    title.textContent = product.name;
+    title.textContent = product.name || '';
     card.appendChild(title);
 
     const description = document.createElement('p');
@@ -178,10 +320,14 @@ async function loadProducts() {
     edit.textContent = 'تعديل';
     edit.onclick = () => {
       editingId = product.id;
+      selectedFiles = [];
       $('productName').value = product.name || '';
       $('description').value = product.description || '';
       $('price').value = product.price;
-      $('imageUrl').value = product.image_url || '';
+      $('imageFiles').value = '';
+      $('imagePreview').replaceChildren();
+      $('currentImagesNote').textContent =
+        'الصور الحالية: ' + images.length + '. اختر صورًا جديدة فقط إذا أردت استبدالها.';
       $('isActive').checked = product.is_active;
       $('formTitle').textContent = 'تعديل المنتج';
       $('saveBtn').textContent = 'حفظ التعديلات';
@@ -198,6 +344,7 @@ async function loadProducts() {
       const { error } = await db.from('products')
         .update({ is_active: !product.is_active })
         .eq('id', product.id);
+
       if (error) message('تعذر تغيير الحالة: ' + error.message);
       else message('تم تحديث حالة المنتج.');
       await loadProducts();
@@ -209,12 +356,15 @@ async function loadProducts() {
     remove.textContent = 'حذف';
     remove.onclick = async () => {
       if (!confirm('هل تريد حذف هذا المنتج نهائيًا؟')) return;
+
       remove.disabled = true;
       const { error } = await db.from('products')
         .delete()
         .eq('id', product.id);
+
       if (error) message('تعذر الحذف: ' + error.message);
-      else message('تم حذف المنتج.');
+      else message('تم حذف المنتج. قد تبقى ملفات صوره في التخزين حتى تُحذف يدويًا.');
+
       await loadProducts();
     };
 
@@ -227,6 +377,7 @@ async function loadProducts() {
 $('loginForm').addEventListener('submit', async event => {
   event.preventDefault();
   message('جارٍ تسجيل الدخول...');
+
   const { error } = await db.auth.signInWithPassword({
     email: $('email').value.trim(),
     password: $('password').value
@@ -251,72 +402,79 @@ $('cancelEdit').addEventListener('click', resetForm);
 $('productForm').addEventListener('submit', async event => {
   event.preventDefault();
   if (busy) return;
+
   setBusy(true);
   message('جارٍ حفظ المنتج...');
 
-  const { data: { user }, error: userError } = await db.auth.getUser();
+  try {
+    const { data: { user }, error: userError } = await db.auth.getUser();
 
-  if (userError || !user) {
-    message('انتهت الجلسة. سجّل الدخول مجددًا.');
-    setBusy(false);
-    showLogin();
-    return;
-  }
-
-  const name = $('productName').value.trim();
-  const description = $('description').value.trim();
-  const price = Number($('price').value);
-  const rawImage = $('imageUrl').value.trim();
-  let image_url = null;
-
-  if (rawImage) {
-    try {
-      const parsed = new URL(rawImage);
-      if (parsed.protocol !== 'https:' && parsed.protocol !== 'http:') {
-        throw new Error();
-      }
-      image_url = parsed.href;
-    } catch (_) {
-      message('رابط الصورة غير صالح. استخدم رابطًا يبدأ بـ https://');
-      setBusy(false);
-      return;
+    if (userError || !user) {
+      showLogin();
+      throw new Error('انتهت الجلسة. سجّل الدخول مجددًا.');
     }
-  }
 
-  if (!name || !Number.isFinite(price) || price <= 0) {
-    message('أدخل اسمًا وسعرًا صحيحًا أكبر من صفر.');
+    const name = $('productName').value.trim();
+    const description = $('description').value.trim();
+    const price = Number($('price').value);
+
+    if (!name || !Number.isFinite(price) || price <= 0) {
+      throw new Error('أدخل اسمًا وسعرًا صحيحًا أكبر من صفر.');
+    }
+
+    if (selectedFiles.length > 10) {
+      throw new Error('الحد الأقصى 10 صور للمنتج الواحد.');
+    }
+
+    const values = {
+      name,
+      description,
+      price,
+      is_active: $('isActive').checked
+    };
+
+    let productId = editingId;
+
+    if (editingId) {
+      const { error } = await db.from('products')
+        .update(values)
+        .eq('id', editingId);
+
+      if (error) throw new Error('تعذر تحديث المنتج: ' + error.message);
+    } else {
+      const { data, error } = await db.from('products')
+        .insert({ ...values, merchant_id: user.id })
+        .select('id')
+        .single();
+
+      if (error) throw new Error('تعذرت إضافة المنتج: ' + error.message);
+      productId = data.id;
+    }
+
+    if (selectedFiles.length > 0) {
+      const urls = await uploadImages(selectedFiles, user.id, productId);
+
+      const { error } = await db.from('products')
+        .update({
+          image_urls: urls,
+          image_url: urls[0] || null
+        })
+        .eq('id', productId);
+
+      if (error) {
+        throw new Error('تم حفظ بيانات المنتج لكن تعذر حفظ روابط الصور: ' + error.message);
+      }
+    }
+
+    message(editingId ? 'تم تحديث المنتج بنجاح.' : 'تمت إضافة المنتج بنجاح.');
+    resetForm();
+    await loadProducts();
+
+  } catch (error) {
+    message('تنبيه: ' + (error.message || 'حدث خطأ غير متوقع.'));
+  } finally {
     setBusy(false);
-    return;
   }
-
-  const values = {
-    name,
-    description,
-    price,
-    image_url,
-    is_active: $('isActive').checked
-  };
-
-  let result;
-  if (editingId) {
-    result = await db.from('products').update(values).eq('id', editingId);
-  } else {
-    result = await db.from('products').insert({
-      ...values,
-      merchant_id: user.id
-    });
-  }
-
-  setBusy(false);
-
-  if (result.error) {
-    message('تعذر الحفظ: ' + result.error.message);
-    return;
-  }
-
-  message(editingId ? 'تم تحديث المنتج بنجاح.' : 'تمت إضافة المنتج بنجاح.');
-  resetForm();
-  await loadProducts();
 });
 
 async function startDashboard() {
@@ -345,13 +503,19 @@ async function startDashboard() {
 }
 
 async function init() {
-  if (SUPABASE_KEY === 'sb_publishable_zp-efBIRPCHrVhtTFl0eOw_-x9ea6G9') {
-    message('أضف مفتاح Publishable الخاص بمشروعك في موضع SUPABASE_KEY داخل هذا الملف.');
-    showLogin();
+  if (!window.supabase) {
+    message('تعذر تحميل مكتبة Supabase. تحقق من اتصال الإنترنت ثم حدّث الصفحة.');
     return;
   }
 
-  const { data: { session } } = await db.auth.getSession();
+  const { data: { session }, error } = await db.auth.getSession();
+
+  if (error) {
+    showLogin();
+    message('تعذر التحقق من الجلسة: ' + error.message);
+    return;
+  }
+
   if (session) await startDashboard();
   else {
     showLogin();
