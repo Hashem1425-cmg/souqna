@@ -1,0 +1,182 @@
+
+<!DOCTYPE html>
+<html lang="ar" dir="rtl">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>تسجيل تاجر | باب اليمن</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#f3f5f7;color:#202a35;font-family:Arial,sans-serif}
+header{background:#173d32;color:#fff;text-align:center;padding:22px}
+main{max-width:600px;margin:24px auto;padding:14px}
+.panel{background:#fff;padding:20px;border-radius:14px;box-shadow:0 2px 12px #0000000c}
+h2{margin-top:0}
+input,select,button{width:100%;font:inherit;padding:13px;margin:8px 0;border-radius:8px}
+input,select{border:1px solid #ccd3d8;background:white}
+button{border:0;background:#176b50;color:white;font-weight:bold;cursor:pointer}
+button:disabled{opacity:.6}
+.muted{color:#64717b;font-size:14px;line-height:1.8}
+.status{background:#eef4f1;padding:12px;border-radius:8px;white-space:pre-wrap;line-height:1.8}
+a{color:#176b50}
+</style>
+</head>
+<body>
+<header>
+  <h1>باب اليمن</h1>
+  <div>تسجيل تاجر جديد</div>
+</header>
+<main>
+  <section class="panel">
+    <h2>إنشاء حساب وطلب اشتراك</h2>
+    <p class="muted">أدخل بياناتك واختر الخطة المناسبة. سيُراجع مدير المتجر طلبك قبل تفعيل حساب التاجر.</p>
+
+    <form id="registerForm">
+      <label for="fullName">الاسم الكامل</label>
+      <input id="fullName" maxlength="120" required autocomplete="name">
+
+      <label for="phone">رقم الهاتف</label>
+      <input id="phone" type="tel" maxlength="30" required autocomplete="tel" placeholder="رقم التواصل">
+
+      <label for="storeName">اسم المتجر</label>
+      <input id="storeName" maxlength="120" required>
+
+      <label for="email">البريد الإلكتروني</label>
+      <input id="email" type="email" required autocomplete="email">
+
+      <label for="password">كلمة المرور</label>
+      <input id="password" type="password" minlength="8" required autocomplete="new-password">
+      <p class="muted">استخدم كلمة مرور قوية لا تقل عن 8 أحرف. لا تشاركها مع أحد.</p>
+
+      <label for="plan">خطة الاشتراك</label>
+      <select id="plan" required>
+        <option value="monthly">اشتراك شهري</option>
+        <option value="yearly">اشتراك سنوي</option>
+      </select>
+
+      <button id="submitBtn" type="submit">إنشاء الحساب وإرسال الطلب</button>
+    </form>
+
+    <div id="status" class="status" role="status" aria-live="polite">
+      جاهز للتسجيل.
+    </div>
+
+    <p class="muted">
+      لديك حساب بالفعل؟
+      <a href="merchant.html">افتح لوحة التاجر</a>
+    </p>
+  </section>
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script>
+const SUPABASE_URL = 'https://qgtygofdtrczotqrmjux.supabase.co';
+
+// استخدم نفس مفتاح Publishable الصحيح الموجود في merchant.html.
+const SUPABASE_KEY = 'ضع_مفتاح_Publishable_الصحيح_هنا';
+
+const db = window.supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+const form = document.getElementById('registerForm');
+const statusBox = document.getElementById('status');
+const submitBtn = document.getElementById('submitBtn');
+
+function showStatus(text) {
+  statusBox.textContent = text;
+}
+
+form.addEventListener('submit', async event => {
+  event.preventDefault();
+  submitBtn.disabled = true;
+
+  let accountCreated = false;
+
+  try {
+    const fullName = document.getElementById('fullName').value.trim();
+    const phone = document.getElementById('phone').value.trim();
+    const storeName = document.getElementById('storeName').value.trim();
+    const email = document.getElementById('email').value.trim();
+    const password = document.getElementById('password').value;
+    const plan = document.getElementById('plan').value;
+
+    if (!fullName || !phone || !storeName || !email) {
+      throw new Error('يرجى تعبئة جميع الحقول.');
+    }
+
+    if (!['monthly', 'yearly'].includes(plan)) {
+      throw new Error('اختر خطة اشتراك صحيحة.');
+    }
+
+    showStatus('جارٍ إنشاء الحساب...');
+
+    const { data, error } = await db.auth.signUp({
+      email,
+      password,
+      options: {
+        data: {
+          full_name: fullName,
+          store_name: storeName
+        }
+      }
+    });
+
+    if (error) throw error;
+
+    const user = data.user;
+    if (!user) {
+      throw new Error('لم يُنشأ الحساب كما هو متوقع. حاول مرة أخرى.');
+    }
+
+    accountCreated = true;
+
+    if (!data.session) {
+      showStatus(
+        'تم إنشاء الحساب، لكن قد تحتاج إلى تأكيد بريدك الإلكتروني أولًا. ' +
+        'تحقق من بريدك ثم سجّل الدخول. لم يُرسل طلب الاشتراك بعد.'
+      );
+      return;
+    }
+
+    showStatus('تم إنشاء الحساب. جارٍ إرسال طلب الاشتراك...');
+
+    const { error: requestError } = await db
+      .from('merchant_applications')
+      .insert({
+        applicant_name: fullName,
+        phone,
+        store_name: storeName,
+        requested_plan: plan,
+        status: 'pending',
+        email,
+        user_id: user.id
+      });
+
+    if (requestError) {
+      showStatus(
+        'تم إنشاء الحساب، لكن تعذر إرسال طلب الاشتراك: ' +
+        requestError.message +
+        '\nلا تنشئ حسابًا جديدًا. سجّل الدخول أو تواصل مع المدير لإكمال الطلب.'
+      );
+      return;
+    }
+
+    showStatus(
+      'تم إنشاء الحساب وإرسال طلب الاشتراك بنجاح.\n' +
+      'الخطة: ' + (plan === 'monthly' ? 'شهري' : 'سنوي') +
+      '\nحالة الطلب: قيد المراجعة.\n' +
+      'لن تتمكن من إدارة المنتجات حتى يوافق المدير ويُفعّل حسابك.'
+    );
+
+    form.reset();
+
+  } catch (error) {
+    showStatus(
+      (accountCreated ? 'تم إنشاء الحساب، لكن لم يكتمل الطلب. ' : '') +
+      'تعذر إكمال التسجيل: ' + (error.message || 'حدث خطأ غير متوقع.')
+    );
+  } finally {
+    submitBtn.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
